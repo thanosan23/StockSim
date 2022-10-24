@@ -1,0 +1,80 @@
+{% extends "layout.html" %}
+{% block content %}
+<h1>Portfolio</h1>
+<!-- Portfolio Table -->
+<table class="table">
+  <thead>
+    <tr>
+      <th scope="col">Symbol</th>
+      <th scope="col">Shares</th>
+      <th scope="col">Purchase Price</th>
+      <th scope="col">Price</th>
+      <th scope="col">+/-</th>
+    </tr>
+    <tbody>
+      {% for stock in stocks %}
+      <tr>
+        <td>{{ stock['symbol'] }}</td>
+        <td>{{ stock['shares'] }}</td>
+        <td>{{ stock['purchase_price'] }}</td>
+        <td>{{ stock['price'] }}</td>
+        <td>{{ stock['delta'] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </thead>
+</table>
+<h5>Profit: ${{ profit }} USD</h5>
+<br>
+<div class="row">
+  <!-- Buy Stocks -->
+  <div class="col">
+    <h1>Buy</h1>
+    <form autocomplete='off' method="POST" action="{{url_for("buyStock")}}">
+        <label for="shares">Shares: </label>
+        <br>
+        <input type="number" name="shares" placeholder="Shares" required>
+        <br>
+        <br>
+        <label for="stock">Stock: </label>
+        <br>
+        <input type="text" name="stock" placeholder="Stock" required>
+        <br>
+        <br>
+        <input class="btn btn-dark" type="submit">
+    </form>
+    <br>
+  </div>
+  <!-- Sell Stocks -->
+  <div class="col">
+    <h1>Sell</h1>
+    <form autocomplete='off' method="POST" action="{{url_for("sellStock")}}">
+        <label for="shares">Shares: </label>
+        <br>
+        <input type="number" name="shares" placeholder="Shares" required>
+        <br>
+        <br>
+        <label for="stock">Stock: </label>
+        <br>
+        <input type="text" name="stock" placeholder="Stock" required>
+        <br>
+        <br>
+        <input class="btn btn-dark" type="submit">
+    </form>
+  </div>
+ <!-- Quote Stocks -->
+  <div class="col">
+    <h1>Quote</h1>
+    <form autocomplete='off' method="POST" action="{{ url_for("quoteStock") }}">
+        <label for="stock">Stock: </label>
+        <br>
+        <input type="text" name="stock" placeholder="Stock" required>
+        <br>
+        <br>
+        <input class="btn btn-dark" type="submit">
+    </form>
+    <br>
+  </div>
+
+</div>
+{% endblock %}
