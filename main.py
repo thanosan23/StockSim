@@ -1,8 +1,10 @@
 import os
 import functools
+from datetime import datetime
 
-from flask import Flask, flash, g, redirect, render_template, session, url_for, request
+from flask import Flask, flash, g, jsonify, redirect, render_template, session, url_for, request
 from werkzeug.security import generate_password_hash, check_password_hash
+from gevent.pywsgi import WSGIServer
 
 from database import connect_to_db, query_db
 from stocks import quote
@@ -12,10 +14,19 @@ app = Flask(__name__)
 class Config:
     DATABASE_NAME ="database.db"
     SECRET_KEY = os.urandom(12).hex()
+    HASH_TYPE = "sha256"
+    PROD = False
+    HOST = '0.0.0.0'
+    PORT = 3000
 
 app.config['SECRET_KEY'] = Config.SECRET_KEY
 
 # utilities
+def get_time():
+    now = datetime.now()
+    return now.strftime("%Y-%m-%d %H:%M:%S")
+
+
 def db_write(func):
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
@@ -34,20 +45,22 @@ def must_be_logged_in(func):
 
 @db_write
 def insert_user(username, password):
-    g.conn.execute("insert into user (username, password_hash) values (?, ?)",
-                   [username, password])
+    g.conn.execute("insert into user (username, password_hash, profit) values (?, ?, ?)",
+                   [username, password, 0.0])
 
 @db_write
 def insert_stock(symbol, shares, purchase_price):
-    g.conn.execute("insert into stocks (user_id, symbol, shares, purchase_price) values (?, ?, ?, ?)",
-                   [session['user_id'], symbol, shares, purchase_price])
+    g.conn.execute("insert into stocks (user_id, symbol, shares, purchase_price, purchase_time) values (?, ?, ?, ?, ?)",
+                   [session['user_id'], symbol, shares, purchase_price, get_time()])
 # requests
 @app.before_request
 def before_request():
     # create database connection before every request
     g.conn = connect_to_db(Config.DATABASE_NAME)
     if 'user_id' in session:
-        g.user = query_db(g.conn, 'select * from user where user_id = ?', [session['user_id']])[0]
+        g.user = query_db(g.conn, 'select * from user where user_id = ?', [session['user_id']])
+        if g.user is not None:
+            g.user = g.user[0]
     else:
         g.user = None
 
@@ -74,14 +87,19 @@ def loginpage():
             return redirect(url_for('homepage'))
         else:
             userdata = userdata[0]
-            if check_password_hash(userdata['password_hash'], data.get("password")):
-                user_id = userdata['user_id']
-                g.conn.commit()
-                session['user_id'] = user_id
-                flash("Logged in", "success")
+            password = data.get("password")
+            if password is not None:
+                if check_password_hash(userdata['password_hash'], password):
+                    user_id = userdata['user_id']
+                    g.conn.commit()
+                    session['user_id'] = user_id
+                    flash("Logged in", "success")
+                else:
+                    flash("Password is incorrect!", "danger")
+                    return redirect(url_for('homepage'))
             else:
-                flash("Password is incorrect!", "danger")
-                return redirect(url_for('homepage'))
+                    flash("Please enter a password!", "danger")
+                    return redirect(url_for('homepage'))
 
         return redirect(url_for('homepage'))
 
@@ -92,7 +110,7 @@ def signuppage():
     else:
         data = request.form
         username = data.get("username")
-        password_hash = generate_password_hash(str(data.get("password")), "sha256")
+        password_hash = generate_password_hash(str(data.get("password")), Config.HASH_TYPE)
         insert_user(username, password_hash)
         flash("User has been created!", "success")
         return redirect(url_for('homepage'))
@@ -108,19 +126,17 @@ def logout():
 @must_be_logged_in
 def portfolio():
     stocks = []
-    profit = 0
     stockdata = query_db(g.conn, "select * from stocks where user_id = ?", [session['user_id']])
     if stockdata is not None:
         for stock in stockdata:
             s = {'symbol' : stock['symbol'], 'shares' : stock['shares'],
                            'purchase_price' : round(stock['shares'] * stock['purchase_price'], 2),
-                           'price' : round(stock['shares'] * quote(stock['symbol']), 2)}
+                           'price' : round(stock['shares'] * quote(stock['symbol']), 2),
+                 'time' : stock['purchase_time']}
             delta = round(s['price'] - s['purchase_price'], 2)
             s['delta'] = delta
-            profit += delta
-            profit = round(profit, 2)
             stocks.append(s)
-    return render_template("portfolio.html", stocks=stocks, profit=profit)
+    return render_template("portfolio.html", stocks=stocks, profit=g.user['profit'])
 
 @app.route("/quote", methods=["POST"])
 @must_be_logged_in
@@ -139,12 +155,11 @@ def buyStock():
     if request.method == "POST":
         data = request.form
         symbol = data.get("stock")
-        shares = int(data.get("shares"))
-        stockdata = query_db(g.conn, "select * from stocks where (user_id, symbol) = (?, ?)",
-                             [session['user_id'], symbol])
-        if stockdata is None:
-            purchase_price = quote(symbol)
-            insert_stock(symbol, shares, purchase_price)
+        shares = data.get("shares")
+        if shares is not None:
+            shares = int(shares)
+        purchase_price = quote(symbol)
+        insert_stock(symbol, shares, purchase_price)
         return redirect(url_for('portfolio'))
     else:
         flash("Invalid URL!", "danger")
@@ -153,25 +168,35 @@ def buyStock():
 @app.route("/sell", methods=["POST"])
 @must_be_logged_in
 def sellStock():
-    if request.method == "POST":
-        data = request.form
-        symbol = data.get("stock")
-        shares = int(data.get("shares"))
-        stockdata = query_db(g.conn, "select * from stocks where (user_id, symbol) = (?, ?)",
-                             [session['user_id'], symbol])
-        if stockdata is not None:
-            if stockdata[0]['shares']-shares > 0:
-                g.conn.execute("update stocks set shares = ? where (user_id, symbol) = (?, ?)",
-                               [max(stockdata[0]['shares']-shares, 0), session['user_id'], symbol])
-                g.conn.commit()
-            else:
-                g.conn.execute("delete from stocks where (user_id, symbol) = (?, ?)",
-                               [session['user_id'], symbol])
-                g.conn.commit()
-        return redirect(url_for('portfolio'))
-    else:
-        flash("Invalid URL!", "danger")
-        return redirect(url_for('homepage'))
+    data = request.json
+    if data is None:
+        data = {}
+    symbol = data["symbol"]
+    time = data["time"]
+    stockdata = query_db(g.conn, "select * from stocks where (user_id, symbol, purchase_time) = (?, ?, ?)",
+                         [session['user_id'], symbol, time])
+    if stockdata is not None:
+        stock = stockdata[0]
+        price = quote(stock["symbol"]) - stock['purchase_price']
+        g.conn.execute("update user set profit = ? where user_id = ?",
+                       [g.user['profit'] + price, g.user['user_id']])
+        g.conn.commit()
+        if stock['shares']-1 > 0:
+            g.conn.execute("update stocks set shares = ? where (user_id, symbol, purchase_time) = (?, ?, ?)",
+                           [max(stock['shares']-1, 0), session['user_id'], symbol, time])
+            g.conn.commit()
+        else:
+            g.conn.execute("delete from stocks where (user_id, symbol, purchase_time) = (?, ?, ?)",
+                           [session['user_id'], symbol, time])
+            g.conn.commit()
+    return jsonify({})
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=3000, debug=True)
+    try:
+        if Config.PROD:
+            http_server = WSGIServer((Config.HOST, Config.PORT), app)
+            http_server.serve_forever()
+        else:
+            app.run(host=Config.HOST, port=Config.PORT, debug=True)
+    except KeyboardInterrupt:
+        exit(0)
