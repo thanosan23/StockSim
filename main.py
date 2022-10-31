@@ -84,7 +84,7 @@ def loginpage():
         userdata = query_db(g.conn, 'select * from user where username = ?', [username])
         if userdata is None:
             flash("User doesn't exist!", "danger")
-            return redirect(url_for('homepage'))
+            return redirect(url_for('loginpage'))
         else:
             userdata = userdata[0]
             password = data.get("password")
@@ -96,10 +96,10 @@ def loginpage():
                     flash("Logged in", "success")
                 else:
                     flash("Password is incorrect!", "danger")
-                    return redirect(url_for('homepage'))
+                    return redirect(url_for('loginpage'))
             else:
                     flash("Please enter a password!", "danger")
-                    return redirect(url_for('homepage'))
+                    return redirect(url_for('loginpage'))
 
         return redirect(url_for('homepage'))
 
@@ -110,10 +110,15 @@ def signuppage():
     else:
         data = request.form
         username = data.get("username")
-        password_hash = generate_password_hash(str(data.get("password")), Config.HASH_TYPE)
-        insert_user(username, password_hash)
-        flash("User has been created!", "success")
-        return redirect(url_for('homepage'))
+        userdata = query_db(g.conn, 'select * from user where username = ?', [username])
+        if userdata is None:
+            password_hash = generate_password_hash(str(data.get("password")), Config.HASH_TYPE)
+            insert_user(username, password_hash)
+            flash("User has been created!", "success")
+            return redirect(url_for('homepage'))
+        else:
+            flash("Username exists!", "danger")
+            return redirect(url_for("signuppage"))
 
 @app.route('/logout')
 @must_be_logged_in
@@ -136,7 +141,7 @@ def portfolio():
             delta = round(s['price'] - s['purchase_price'], 2)
             s['delta'] = delta
             stocks.append(s)
-    return render_template("portfolio.html", stocks=stocks, profit=g.user['profit'])
+    return render_template("portfolio.html", stocks=stocks, profit=round(g.user['profit'], 2))
 
 @app.route("/quote", methods=["POST"])
 @must_be_logged_in
@@ -190,6 +195,18 @@ def sellStock():
                            [session['user_id'], symbol, time])
             g.conn.commit()
     return jsonify({})
+
+@app.route("/leaderboard")
+def leaderboard():
+    scores = []
+    data = query_db(g.conn, "select * from user")
+    if data is not None:
+        for user in data:
+            scores.append({'user' : user['username'],
+                           'profit' : round(user['profit'], 2)})
+    scores.sort(key=lambda x : x['profit'])
+    scores = scores[:50]
+    return render_template("leaderboard.html", scores=scores)
 
 if __name__ == "__main__":
     try:

@@ -1,0 +1,21 @@
+{% extends "layout.html" %}
+{% block content %}
+<h1>Leaderboard</h1>
+<table class="table">
+  <thead>
+    <tr>
+      <th scope="col">User</th>
+      <th scope="col">Profit</th>
+    </tr>
+    <tbody>
+      {% for score in scores %}
+      <tr>
+        <td>{{ score['user'] }}</td>
+        <td>${{ score['profit'] }} USD</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </thead>
+</table>
+
+{% endblock %}

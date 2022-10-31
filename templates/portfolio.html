@@ -23,7 +23,7 @@
         <td>{{ stock['price'] }}</td>
         <td>{{ stock['delta'] }}</td>
         <td>
-          <button class="btn btn-primary" onclick="sellStock('{{ stock['time'] }}', '{{ stock['symbol']}}')">Sell</button>
+          <button class="btn btn-danger" onclick="sellStock('{{ stock['time'] }}', '{{ stock['symbol']}}')">Sell</button>
         </td>
       </tr>
       {% endfor %}
@@ -53,23 +53,6 @@ NOTE: Your profit will only increase when you sell your shares.
     </form>
     <br>
   </div>
-  <!-- Sell Stocks -->
-  <!-- <div class="col"> -->
-  <!--   <h1>Sell</h1> -->
-  <!--   <form autocomplete='off' method="POST" action="{{url_for("sellStock")}}"> -->
-  <!--       <label for="shares">Shares: </label> -->
-  <!--       <br> -->
-  <!--       <input type="number" name="shares" placeholder="Shares" required> -->
-  <!--       <br> -->
-  <!--       <br> -->
-  <!--       <label for="stock">Stock: </label> -->
-  <!--       <br> -->
-  <!--       <input type="text" name="stock" placeholder="Stock" required> -->
-  <!--       <br> -->
-  <!--       <br> -->
-  <!--       <input class="btn btn-dark" type="submit"> -->
-  <!--   </form> -->
-  <!-- </div> -->
  <!-- Quote Stocks -->
   <div class="col">
     <h1>Quote</h1>
@@ -83,7 +66,6 @@ NOTE: Your profit will only increase when you sell your shares.
     </form>
     <br>
   </div>
-
 </div>
 {% endblock %}
 {% block script %}
